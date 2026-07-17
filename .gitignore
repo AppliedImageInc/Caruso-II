@@ -179,3 +179,17 @@ cython_debug/
 #  refer to https://docs.cursor.com/context/ignore-files
 .cursorignore
 .cursorindexingignore
+
+# liza
+.vs/
+ids/
+init sequences/
+manuals and spec sheets/
+planning and documentation/
+Caruso II/Motion_Control_Examples-main/
+Caruso II/dlls/
+Caruso II/bitmaps/
+Caruso II/archive/
+Caruso II/env/
+Caruso II/new/
+Caruso II/thorlabs_sdk/

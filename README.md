@@ -1,2 +1,2 @@
 # carusoII
-communication between the lasers, motors, and computer
+communication between the lasers, motors, UI controller, cameras and computer
