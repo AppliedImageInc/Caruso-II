@@ -186,8 +186,12 @@ ids/
 init sequences/
 manuals and spec sheets/
 planning and documentation/
-Caruso II/Motion_Control_Examples-main/
-Caruso II/dlls/
 Caruso II/env/
-Caruso II/new/
-Caruso II/thorlabs_sdk/
+Caruso II/Motion_Control_Examples-main-new/
+!Caruso II/Motion_Control_Examples-main/
+
+Caruso II/Motion_Control_Examples-main/*
+!Caruso II/Motion_Control_Examples-main/Python/
+
+Caruso II/Motion_Control_Examples-main/Python/*
+!Caruso II/Motion_Control_Examples-main/Python/XA/
