@@ -40,7 +40,7 @@ from thorlabs_xa.native_sdks.native_functions import NativeFunctions
 
 from thorlabs_xa.shared.device import Device
 from thorlabs_xa.shared.enums import TLMC_DigitalOutput, TLMC_EnableState, TLMC_EndOfMoveMessagesMode, TLMC_MoveMode, TLMC_OperatingMode, TLMC_ParameterGroupId, TLMC_ScaleType, TLMC_SettingStringFormat, TLMC_StatusItemId, TLMC_StopMode, TLMC_Unit
-from thorlabs_xa.shared.params import TLMC_ConnectedProductInfo, TLMC_DcPidParams, TLMC_DeviceInfo, TLMC_FirmwareVersion, TLMC_GeneralMoveParams, TLMC_HardwareInfo, TLMC_HomeParams, TLMC_JogParams, TLMC_KcubeIoTriggerParams, TLMC_KcubeMmiParams, TLMC_KcubePositionTriggerParams, TLMC_LimitSwitchParams, TLMC_MoveAbsoluteParams, TLMC_MoveRelativeParams, TLMC_RichResponse, TLMC_Setting, TLMC_StatusItem, TLMC_UniversalStatus, TLMC_UniversalStatusBit, TLMC_VelocityParams
+from thorlabs_xa.shared.params import TLMC_ConnectedProductInfo, TLMC_DcPidParams, TLMC_DeviceInfo, TLMC_FirmwareVersion, TLMC_GeneralMoveParams, TLMC_HardwareInfo, TLMC_HomeParams, TLMC_JogParams, TLMC_KcubeIoTriggerParams, TLMC_KcubeMmiParams, TLMC_KcubePositionTriggerParams, TLMC_LimitSwitchParams, TLMC_MoveAbsoluteParams, TLMC_MoveRelativeParams, TLMC_RichResponse, TLMC_Setting, TLMC_StatusItem, TLMC_UniversalStatus, TLMC_UniversalStatusBit, TLMC_VelocityParams, TLMC_LcdMoveParams
 
 
 class Kdc101(Device,

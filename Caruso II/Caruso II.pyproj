@@ -24,13 +24,8 @@
   <ItemGroup>
     <Compile Include="autofocus_stage.py" />
     <Compile Include="cam1.py" />
-    <Compile Include="cam1c.py" />
-    <Compile Include="cam1_freeze_bad.py" />
     <Compile Include="cam2.py" />
-    <Compile Include="cam2c.py" />
-    <Compile Include="cam2c_linux.py" />
     <Compile Include="carusoII.py" />
-    <Compile Include="carusoII_dev.py" />
     <Compile Include="carusoII_working.py" />
     <Compile Include="scrap.py" />
     <Compile Include="ui.py" />
@@ -38,14 +33,6 @@
   <ItemGroup>
     <InterpreterReference Include="CondaEnv|CondaEnv|liza" />
     <InterpreterReference Include="Global|PythonCore|3.14" />
-  </ItemGroup>
-  <ItemGroup>
-    <Content Include="ExamplesUsingInterfaces.cs" />
-    <Content Include="main.c" />
-    <Content Include="main.cpp" />
-    <Content Include="Program.cs" />
-    <Content Include="XMOT100" />
-    <Content Include="YMOT100" />
   </ItemGroup>
   <ItemGroup>
     <Interpreter Include="env\">
