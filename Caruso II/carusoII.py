@@ -7,14 +7,16 @@ import serial
 import time
 from time import sleep
 import numpy
+import numpy as np
 import scipy
-import scipy.signal
 import math
 import os
 import glob
 import circle_fit
 import cam2
 import autofocus_stage
+
+from scipy.signal import find_peaks
 
 # find function codes for the HP 5508 on page 86 here: file:///O:/Code%20Repository/Caruso%20II/manuals%20and%20spec%20sheets/05528-90023%20service%20manual.pdf"
 # find compumotor commands here: file:///O:/Code%20Repository/Caruso%20II/manuals%20and%20spec%20sheets/sx_srg_e.pdf
@@ -48,6 +50,14 @@ yfact = 0.9999888
 edge = 'e' # looks for 1 edge between a dark and light field: light field | dark field
 line = 'l' # looks for the midpoint between two edges; the middle of a thin line: light field | dark field | light field
 off = 'o' # operator is manually finding the edges
+
+# Edge detection parameters
+RETICLE_CENTER_OFFSET = 4.0
+PEAK_PROMINENCE_FRACTION = 0.30
+MIN_PEAK_DISTANCE = 20
+CENTROID_WINDOW_RADIUS = 3
+RETICLE_SIZE = 222
+LOCAL_PEAK_PROMINENCE = 0.30
 
 ser_laser = serial.Serial() # serial port to lasers
 ser_motor = serial.Serial() # serial port to compumotors
@@ -1086,61 +1096,60 @@ def autocpoint(mline):
 def gaussfunc(x,a,b,c):
 	return(a*numpy.exp(-((x-b)**2)/(2*c**2)))
 
-# edge data from the camera gets passed in, returns the location of the edge
-def findedges(edge_data):
-	length = edge_data.size # 222, size of the green reticle
-	x_linspace = numpy.arange(length) - length/2 + 4 # evenly spaced array of size A, unclear to me why the values need the -A/2 + 4 offset, values are -107 to 114
-	extremas = scipy.signal.argrelextrema(edge_data, numpy.greater, order = 10) # tuple of arrays, extremas[0] contains the indices of the relative extrema of the edge data, bc edge_data is 1D, extremas[1] is not populated
-	max_indices = extremas[0]
-	# make an array of the max values
-	maxes = []
-	for i in range(len(max_indices)):
-		maxes.append(edge_data[max_indices[i]])
-	
-	# get the absolute max
-	abs_max = numpy.amax(maxes) 
+def findedges(edge_data:np.ndarray) -> list[float]:
+	"""
+	Function which finds the strongest (global maxima) edges from 1D profile
+	Edge locations are estimated with sub-pixel accuracy
 
-	# filter maxes for edges over 1/2 the absolute maximum edge value
-	fmax_indices = []
-	fmaxes = []
-	for i in range(len(maxes)):
-		if maxes[i] > (abs_max/2):
-			fmax_indices.append(max_indices[i])
-			fmaxes.append(maxes[i])
+	Args:
+		edge_data (np.ndarray): Return value from `set_edge_profiles()`
 
-	# array to store the fitted edge location
-	locs = []
+	Returns:
+		list[float]: Edge locations in [mm] relative to the reticle center.
+	"""
+	# Position of each sample relative to the reticle center.
+	sample_positions = (
+		np.arange(edge_data.size)
+		- edge_data.size / 2
+		+ RETICLE_CENTER_OFFSET  # Calibration offset.
+	)
 
-	# get how many data points in the original edge data on either side of the filtered maxes have values above a certain threshold
-	for i in range(len(fmax_indices)):
-		# left side of the max
-		j = 0
-		while edge_data[fmax_indices[i]-j] > fmaxes[i]/2: # ask GMT if this makes any sense to him? why would you compare the data points surrounding the filtered maxes to the maxes that don't necessarily correspond? ask him if he agrees this should be: while a[fmax_ind[i]-j] > fmaxes[i]/2:
-			j = j+1
-			if (fmax_indices[i] - j) == 0: # make sure we dont pass a negative index
-				break
-		# right side of the max
-		k = 0
-		while edge_data[fmax_indices[i]+k] > maxes[i]/2:
-			k = k+1
-			if (fmax_indices[i]+k) == len(edge_data)-1: # make sure we dont run past the end of the edge data array
-				break
+	# Detect prominent peaks while suppressing noise and duplicate detections.
+	peak_indices, _ = find_peaks(
+		edge_data,
+		prominence=LOCAL_PEAK_PROMINENCE * edge_data.max(),
+		distance=MIN_PEAK_DISTANCE ,
+	)
 
-		# the x and y values of the whole peak
-		x_peak = x_linspace[fmax_indices[i]-j:fmax_indices[i]+k]
-		y_peak = edge_data[fmax_indices[i]-j:fmax_indices[i]+k]
-		print(y_peak)
+	# Scan local peaks, filtering via absolute threshold criteria 
+	edge_locations = []
+	for peak_index in peak_indices:
+     
+		# Extract a small neighborhood left/right of peak
+		# + profile boundary clipping
+		window_start = max(0, peak_index - CENTROID_WINDOW_RADIUS)
+		window_end = min(edge_data.size, peak_index + CENTROID_WINDOW_RADIUS + 1)
 
-		# initial guesses for the parameters of gaussfunc (a is the max, b is the x_pos of the mean, c is the std dev)
-		c = numpy.std(y_peak)
-		params_guess = [abs_max, x_linspace[fmax_indices[i]], c]  
+		window = sample_positions[window_start:window_end]
+		window_averaging_weights = edge_data[window_start:window_end]
 
-		params = numpy.zeros(3)
-		covariances = numpy.zeros((3,3))
-		p0, p1 = scipy.optimize.curve_fit(gaussfunc, x_peak, y_peak, p0=params_guess) # curve fit returns a 1D array of the optimized parameters (a,b,c) and a 2D array with the covariance of the parameters
-		locs.append(params[1]*mmpp) # append the mean (xpos of the edge) * mm/image pixel
+		# Intensity-weighted centroid for sub-pixel localization
+		# 	i.e. consult the pixels in a small area around the peak, 
+		# 	     with most of the focus around the center
+		if window_averaging_weights.sum() > 0:
+			edge_position = np.average(
+				window,
+				weights=window_averaging_weights,
+			)
+   
+		# Just grab the peak, no avg
+		else:
+			edge_position = sample_positions[peak_index]
 
-	return locs
+		# Convert edge position to [mm] using conversion constant
+		edge_locations.append(edge_position * mmpp)
+
+	return edge_locations
 
 # called if edge_detection_mode option is edge
 # if findedges returns the locations of edges, its unclear to me why if there were multiple that got through the filtering process, why we would choose the one with the smaller location? am i interpreting this wrong? GMT? 
