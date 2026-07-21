@@ -41,6 +41,7 @@ from matplotlib.backends.backend_agg import FigureCanvasAgg as FigureCanvas
 from matplotlib.figure import Figure
 import os
 import time
+from typing import Literal
 
 ##### constants #####
 
@@ -58,6 +59,10 @@ FULL_HEIGHT = 3006 # px
 WINDOW_SCALE = 2696/3006 # we make the window smaller to decrease lag
 GRAPH_WIDTH = 1200 # dimensions of the graphs overlayed on the camera feed
 GRAPH_HEIGHT = 400
+
+BLUR_KERN_SHAPE = (5,5)
+CANNY_THRESH_1 = 50
+CANNY_THRESH_2 = 150
 
 ##### uEye variables #####
 
@@ -229,44 +234,67 @@ def correct(R, l, d, L, D):
     C = (R - D) * ((l - d) / (L - D)) + d # flat field correction
     return C.astype(np.uint8)
 
-# populate the edge profile array for the specified axis
-# ask GMT about implementing a better edge detection algorithm?
-def set_edge_profiles(frame, axis):
-    # NOTE: where edge stuff happens
-    h_mid = height.value // 2 # floor division
-    w_mid = width.value // 2
+def set_edge_profiles(frame:np.ndarray, axis:Literal["x", "y"]) -> np.ndarray:
+    """
+    Populate the edge profile array for the specified axis
 
-    # store the edge profiles of the last 5 frames
-    edge_profiles = np.zeros((RETICLE_SIZE, 5)) 
+    ### Note:
+        GMT's implementation of a "better" edge detection algorithm. 
+        This message can be deleted.
 
-    # limits of the reticle window
-    reticle_window_t = int(h_mid - RETICLE_SIZE/2)
-    reticle_window_b = int(h_mid + RETICLE_SIZE/2)
-    reticle_window_l = int(w_mid - RETICLE_SIZE/2)
-    reticle_window_r = int(w_mid + RETICLE_SIZE/2)
+    Args:
+        frame (np.ndarray): 2D image array from video frame
+        axis (Literal["x", "y"]): 'x' or 'y' axis (direction of edge detection) 
+        
+    Returns:
+        np.ndarray: 
+            1D array of edge magnitudes.
+            shape=(RETICLE_SIZE,), dtype=float.
+    """
+    
+    # Crop the reticle region
+    h_midpoint = int(frame.shape[0] // 2)
+    w_midpoint = int(frame.shape[1] // 2)
+    half = RETICLE_SIZE // 2
+    reticle = frame[
+        h_midpoint - half : h_midpoint + half,
+        w_midpoint - half : w_midpoint + half,
+    ]
 
-    # smoothing? 
-    # also, in the bmp of the reticle, the square bulges out slightly, i think that is to compensate for the distortion of the camera lens? 
-    # i think we average the centered window and the offcenter window to get a derivative so there are high values near the edge and low values elsewhere
-    # im unclear on why the correction is needed here, my guess is that it was just tuning the bmp to a known target? 
-    correction = 1
-    delta = 2
-    if axis == 'x':
-        centered_window   = np.squeeze(np.mean(frame[reticle_window_t + correction:reticle_window_b + correction, reticle_window_l:reticle_window_r], axis=0)) # squeeze eliminates empty dimensions, mean averages the array elements (along the 0th axis)
-        off_center_window = np.squeeze(np.mean(frame[reticle_window_t + correction:reticle_window_b + correction, reticle_window_l + delta:reticle_window_r + delta], axis=0))
-    if axis == 'y':
-        centered_window   = np.squeeze(np.mean(frame[reticle_window_t:reticle_window_b, reticle_window_l + correction:reticle_window_r + correction], axis=1)) # squeeze eliminates empty dimensions, mean averages the array elements (along the 0th axis)
-        off_center_window = np.squeeze(np.mean(frame[reticle_window_t + delta:reticle_window_b + delta, reticle_window_l + correction:reticle_window_r + correction], axis=1))
+    # Coerce reticle to uint8
+    if reticle.dtype != np.uint8:
+        reticle = cv2.normalize(
+            src=reticle, dst=reticle, alpha=0, beta=255, norm_type=cv2.NORM_MINMAX
+        ).astype(np.uint8)
+        
+    # Reduce noise
+    reticle_blurred = cv2.GaussianBlur(reticle, BLUR_KERN_SHAPE, sigmaX=1.0)
+    
+    # Detect edges
+    edges = cv2.Canny(
+        reticle_blurred,
+        threshold1=CANNY_THRESH_1,
+        threshold2=CANNY_THRESH_2,
+        apertureSize=3,
+        L2gradient=True,
+    )
+    
+    # Collapse the 2D edge image into a 1D profile
+    if axis == "x":
+        profile = edges.mean(axis=0)
+    elif axis == "y":
+        profile = edges.mean(axis=1)
+    else:
+        raise ValueError("axis must be 'x' or 'y'")
 
-    # populate the edge profiles
-    edge_profiles[:, 4] = edge_profiles[:, 3]
-    edge_profiles[:, 3] = edge_profiles[:, 2]
-    edge_profiles[:, 2] = edge_profiles[:, 1]
-    edge_profiles[:, 1] = edge_profiles[:, 0]
-    edge_profiles[:, 0] = np.absolute((off_center_window - centered_window) / 2)
-    averaged_edges = np.squeeze(np.mean(edge_profiles, axis=1)) # smooth the profiles?
-
-    return averaged_edges
+    # Smooth the profile, suppress isolated spikes
+    profile = cv2.GaussianBlur(
+        src=profile.reshape(-1, 1),
+        ksize=(1, 5),
+        sigmaX=0,
+    )
+    profile = profile.flatten()
+    return profile.astype(np.float32)
 
 ##### initialize camera #####
 try:
