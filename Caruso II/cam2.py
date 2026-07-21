@@ -60,9 +60,7 @@ WINDOW_SCALE = 2696/3006 # we make the window smaller to decrease lag
 GRAPH_WIDTH = 1200 # dimensions of the graphs overlayed on the camera feed
 GRAPH_HEIGHT = 400
 
-BLUR_KERN_SHAPE = (5,5)
-CANNY_THRESH_1 = 50
-CANNY_THRESH_2 = 150
+EDGE_HISTORY_LENGTH = 5 # n_edges to average over, temporally
 
 ##### uEye variables #####
 
@@ -234,7 +232,11 @@ def correct(R, l, d, L, D):
     C = (R - D) * ((l - d) / (L - D)) + d # flat field correction
     return C.astype(np.uint8)
 
-def set_edge_profiles(frame:np.ndarray, axis:Literal["x", "y"]) -> np.ndarray:
+def set_edge_profiles(
+    frame:np.ndarray, 
+    axis:Literal["x", "y"], 
+    edge_history: np.ndarray,
+) -> np.ndarray:
     """
     Populate the edge profile array for the specified axis
 
@@ -243,58 +245,83 @@ def set_edge_profiles(frame:np.ndarray, axis:Literal["x", "y"]) -> np.ndarray:
         This message can be deleted.
 
     Args:
-        frame (np.ndarray): 2D image array from video frame
-        axis (Literal["x", "y"]): 'x' or 'y' axis (direction of edge detection) 
+        frame (np.ndarray):
+            2D image array from video frame
+        axis (Literal["x", "y"]): 
+            'x' or 'y' axis (direction of edge detection) 
+        edge_history (np.ndarray):
+            Rolling history of previous edge profiles.
+            shape=(RETICLE_SIZE, 5)
         
     Returns:
         np.ndarray: 
-            1D array of edge magnitudes.
+            Smoothed edge profile.
             shape=(RETICLE_SIZE,), dtype=float.
     """
-    
-    # Crop the reticle region
-    h_midpoint = int(frame.shape[0] // 2)
-    w_midpoint = int(frame.shape[1] // 2)
-    half = RETICLE_SIZE // 2
-    reticle = frame[
-        h_midpoint - half : h_midpoint + half,
-        w_midpoint - half : w_midpoint + half,
-    ]
+    # Spatial offset used for edge detection
+    shift = 2
+    correction = 1
 
-    # Coerce reticle to uint8
-    if reticle.dtype != np.uint8:
-        reticle = cv2.normalize(
-            src=reticle, dst=reticle, alpha=0, beta=255, norm_type=cv2.NORM_MINMAX
-        ).astype(np.uint8)
-        
-    # Reduce noise
-    reticle_blurred = cv2.GaussianBlur(reticle, BLUR_KERN_SHAPE, sigmaX=1.0)
-    
-    # Detect edges
-    edges = cv2.Canny(
-        reticle_blurred,
-        threshold1=CANNY_THRESH_1,
-        threshold2=CANNY_THRESH_2,
-        apertureSize=3,
-        L2gradient=True,
-    )
-    
-    # Collapse the 2D edge image into a 1D profile
+    # Reticle crop region
+    height, width = frame.shape[:2]
+
+    half = RETICLE_SIZE // 2
+    top = height // 2 - half
+    bottom = top + RETICLE_SIZE
+    left = width // 2 - half
+    right = left + RETICLE_SIZE
+
+    # Horizontal edge
     if axis == "x":
-        profile = edges.mean(axis=0)
+        centered = frame[
+            top + correction : bottom + correction,
+            left:right,
+        ].mean(axis=0)
+
+        shifted = frame[
+            top + correction : bottom + correction,
+            left + shift : right + shift,
+        ].mean(axis=0)
+
+    # Vertical edge
     elif axis == "y":
-        profile = edges.mean(axis=1)
+        centered = frame[
+            top:bottom,
+            left + correction : right + correction,
+        ].mean(axis=1)
+
+        shifted = frame[
+            top + shift : bottom + shift,
+            left + correction : right + correction,
+        ].mean(axis=1)
+
     else:
         raise ValueError("axis must be 'x' or 'y'")
 
-    # Smooth the profile, suppress isolated spikes
-    profile = cv2.GaussianBlur(
-        src=profile.reshape(-1, 1),
-        ksize=(1, 5),
-        sigmaX=0,
-    )
-    profile = profile.flatten()
-    return profile.astype(np.float32)
+    # Current edge magnitude
+    edges = np.abs(shifted - centered) / shift
+    
+    # Update rolling (overriding) edge history
+    edge_history[:, 1:] = edge_history[:, :-1]
+    edge_history[:, 0] = edges
+    """
+    Frame 1
+    [current, 0, 0, 0, 0]
+
+    Frame 2
+    [current2, current1, 0, 0, 0]
+    
+    ...
+    
+    Frame 5
+    [current5, current4, current3, current2, current1]
+
+    Frame 6
+    [current6, current5, current4, current3, current2]
+    """
+
+    # Average across the history window
+    return edge_history.mean(axis=1)
 
 ##### initialize camera #####
 try:
@@ -419,6 +446,12 @@ try:
     ##### main display loop #####
     # two graphs are displayed, one for the x axis, one for the y axis. they have peaks where there are edges (a pixel is darker/lighter than its neighbor)
     i = 0
+
+    # Temporal smoothing
+    # Averages last (EDGE_HISTORY) number of scans together 
+    # Updates average every GRAPH_UPDATE_EVERY
+    x_edge_history = np.zeros((RETICLE_SIZE, EDGE_HISTORY_LENGTH), dtype=np.float64)
+    y_edge_history = np.zeros((RETICLE_SIZE, EDGE_HISTORY_LENGTH), dtype=np.float64)
     while True:
         # loop until we get a frame
         nRet = ueye.is_FreezeVideo(hCam, ueye.IS_WAIT)
@@ -440,8 +473,8 @@ try:
         if i % GRAPH_UPDATE_EVERY == 0:
             
             # get the edge data for both axes
-            averaged_edges_x = set_edge_profiles(frame, 'x')
-            averaged_edges_y = set_edge_profiles(frame, 'y')
+            averaged_edges_x = set_edge_profiles(frame, "x", x_edge_history)
+            averaged_edges_y = set_edge_profiles(frame, "y", y_edge_history)
             peak_x = np.max(averaged_edges_x)
             peak_y = np.max(averaged_edges_y)
             """
