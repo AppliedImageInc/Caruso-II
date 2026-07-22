@@ -18,6 +18,7 @@ A_SCALE = 264
 SIMULATION_CONFIG_STRING = { "PartNumber" : KDC101_PART_NUMBER, "SerialNumber" : KDC101_SERIAL_NUMBER, "ActuatorType" : "Z906" }
 DEFAULT_TIMEOUT = 5000 # ms
 
+global device
 device: Kdc101 | None = None
 
 # if a controller is not found, make a simulation
@@ -55,24 +56,25 @@ def move(distance):
     # move_fr_params.set_end_of_move_messages_mode = TLMC_EndOfMoveMessagesMode.TLMC_EndOfMoveMessagesMode_Enabled
     device.set_end_of_move_messages_mode(TLMC_EndOfMoveMessagesMode.TLMC_EndOfMoveMessagesMode_Enabled)
     # device.move(TLMC_MoveMode.TLMC_MoveMode_AbsoluteToProgrammedPosition, 1, DEFAULT_TIMEOUT)
-    device.move(TLMC_MoveMode.TLMC_MoveMode_Relative, distance * D_SCALE, DEFAULT_TIMEOUT)
+    device.move(TLMC_MoveMode.TLMC_MoveMode_Relative, int(distance * D_SCALE), DEFAULT_TIMEOUT)
 
     position_counter_expected = position_counter_before_move + distance * D_SCALE
     position_counter_after_move = device.get_position_counter(DEFAULT_TIMEOUT)
-    DiagnosticsHelper.console_green("Position Counter before move: " + str(position_counter_before_move))
+    # DiagnosticsHelper.console_green("Position Counter before move: " + str(position_counter_before_move))
     DiagnosticsHelper.console_green("Position Counter expected: " + str(position_counter_expected))
     DiagnosticsHelper.console_green("Position Counter after move: " + str(position_counter_after_move))
-
     
-
+    """
     if position_counter_expected == position_counter_after_move:
         DiagnosticsHelper.console_green("Position Counter round trip test passed.")
-        device.set_position_counter(position_counter_expected)
+        device.set_position_counter(int(position_counter_expected))
     else:
         DiagnosticsHelper.console_error("Position Counter round trip test failed.")
+        """
 
 
 def main() -> None:
+    global device
     system_manager = SystemManager.instance()
 
     if platform.system() == "Linux":
@@ -243,6 +245,7 @@ def main() -> None:
         print("Encountered error, code: ", e.error_code)
 
     # shutdown
+    """
     finally:
         if device is not None:
             DiagnosticsHelper.console("Shutting down KDC101...")
@@ -252,6 +255,6 @@ def main() -> None:
         DiagnosticsHelper.console("Shutting down system...")
         system_manager.shutdown()
 
-    DiagnosticsHelper.console("Completed.")
+    DiagnosticsHelper.console("Completed.")"""
 
-main()
+# main()

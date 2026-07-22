@@ -15,8 +15,10 @@ import glob
 import circle_fit
 import carusoII
 
+print("after import")
+
 ##### global variables #####
-version = "Caruso II Rev 2.00.00"
+version = "Caruso II Rev 3"
 root = Tk()
 try:
 	root.iconbitmap('caruso.ico')
@@ -251,11 +253,14 @@ def ui():
 
 	###### Autofocus Button #######
 
-	corrframe = ttk.Frame(mainframe, relief = 'ridge')
-	corrframe.grid(column = 4, row = 15, padx=20, pady = 20, columnspan = 1, rowspan = 1)
+	autofocus_frame = ttk.Frame(mainframe, relief = 'ridge')
+	autofocus_frame.grid(column = 4, row = 15, padx=20, pady = 20, columnspan = 1, rowspan = 1)
 
-	cvbutton = ttk.Button(corrframe, text = 'Autofocus Camera', command = carusoII.autofocus)
-	cvbutton.grid(column = 0, row = 0, padx = 10, pady = 10)
+	autofocus_button = ttk.Button(autofocus_frame, text = 'Autofocus Camera', command = carusoII.autofocus)
+	autofocus_button.grid(column = 0, row = 0, padx = 10, pady = 10)
+
+	score_button = ttk.Button(autofocus_frame, text = 'Get Autofocus Score', command = carusoII.cam2.calc_focus)
+	score_button.grid(column = 0, row = 1, padx = 10, pady = 10)
 
 
 	##### Automated Part Measurement Widgets ######
@@ -344,14 +349,10 @@ def ui():
 	prevstr = ''
 	currstr = ''
 
-	carusoII.init_serial_connections()
-	"""
-	# loop that checks for new input from the UI controller, and calls ctrlupdate
-	while True:
-		currstr = carusoII.read_data_controller()
-		if currstr and len(currstr) == 27:  # the string that the UI controller returns is v long lol
-			carusoII.ctrlupdate(currstr)
-	"""
+	carusoII.UI_controller_thread.start()
+	carusoII.cam2.camera_thread.start()
+	carusoII.autofocus_stage.main()
+
 
 # things to do when the ui window is closed	
 def on_exit():
@@ -364,6 +365,8 @@ def main():
 	# root.protocol("WM_DELETE_WINDOW", lambda: plot.save_pen_num(pen_num, root)) # when the window is closed, call the function to save the pen number
 	root.protocol("WM_DELETE_WINDOW", on_exit)
 	root.mainloop() # opens the loop that keep the gui running
+	carusoII.UI_controller_thread.join()
+	carusoII.cam2.camera_thread.start()
 	
 	
 #run main

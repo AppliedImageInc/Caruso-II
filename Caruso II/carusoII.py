@@ -15,6 +15,7 @@ import glob
 import circle_fit
 import cam2
 import autofocus_stage
+import threading
 
 from scipy.signal import find_peaks
 
@@ -43,7 +44,7 @@ xslope = 0
 
 mmpp = .00008955   # millimeters per image pixel
 
-xfact = 0.9999972
+xfact = 0.9999972 # conversion factors between what is displayed on the 5508As and what we put in the measurement files
 yfact = 0.9999888
 
 # edge detection options 
@@ -67,11 +68,21 @@ motor_port = "COM5"
 control_port = "COM6"
 BAUDRATE = 9600 # units are bits/sec, # of signal changes/s
 
+FOCUS_SCORE_MAX = 0.6
+FOCUS_SCORE_MIN = 0
+focus_score_diff = FOCUS_SCORE_MAX - FOCUS_SCORE_MIN
+ONE_TURN = 1 # 0.05 # mm, one turn of the manual focus stage was 50um
 
 x_address = b"++addr3\n" # GPIB address, x laser 
 y_address = b"++addr5\n" # GPIB address, y laser
 
 camoffset = [6.572,56.584] # distance from cam1 to cam2
+
+# UI controller arrow keys
+prev_up = 1
+prev_down = 1
+prev_left = 1
+prev_right = 1
 
 # initialize the tkinter variables, the first 5 are for the radio button in the UI, the last 3 are for the X-Axis, Y-Axis and Distance readouts in the center of the UI, and also for populating the X, Y, Points and Distances boxes
 def ui_variable_inits():
@@ -113,11 +124,6 @@ def ui_variable_inits():
 	Dvar.set('000.00000')
 	####
 
-# UI controller arrow keys
-prev_up = 1
-prev_down = 1
-prev_left = 1
-prev_right = 1
 
 
 ##### Serial Functions #####
@@ -204,7 +210,7 @@ def read_data_controller():
 	response = ''
 	while got_serial_response == False:
 		response = ser_control.readline()
-		print(response[0:1]) 
+		# print(response[0:1]) 
 		if response !=b'':
 			# print(response)
 			try:
@@ -611,6 +617,7 @@ def ctrlupdate(a):
 # move the motors according to the input from the UI controller
 def ctrlupdate(a):
 	global loopstate, autostate
+	# button_statuses = button_statuses.split(',')
 	a = a.split(',')
 	# print(a)
 	try:
@@ -754,25 +761,53 @@ def ctrlupdate(a):
 
 ##### Camera #####
 
+test_focus_score_array = [0.34, 0.2, 0.4, 0.42, 0.46, 0.47, 0.5, 0.48]
+
 # method for coordinating the kdc101 -> z925b -> xrn25x and the camera to focus the camera
 def autofocus():
-	print("not ready yet :(((((((")
-	
 	# decide which direction to move by moving a bit up then a bit down and checking which is better
+	direction, curr_focus_score = find_focus_dir()
+	prev_focus_score = 0
+	i = 0
+	while curr_focus_score > prev_focus_score:
+		autofocus_stage.move(direction * (ONE_TURN/4))
+		prev_focus_score = curr_focus_score
+		curr_focus_score = test_focus_score_array[2 + i] # cam2.calc_focus()
+		i += 1
+	
+	autofocus_stage.move(-direction * (ONE_TURN/4))
+	print("Focused with score: " + str(prev_focus_score))
 
 
 # decide which direction to move the camera stage by moving a bit up then a bit down and checking which is better
 def find_focus_dir():
-	x_peak, y_peak = cam2.get_peak()
-	one_turn = 0.05 # mm, one turn of the manual focus stage was 50um
-	# the move method is relative, can be switched to absolute if that is prefered tho
-	autofocus_stage.move(one_turn/4) # move the stage a bit down
-	x_peak_down, y_peak_down = cam2.get_peak()
-	autofocus_stage.move(-one_turn/2) # move the stage a bit up
-	x_peak_up, y_peak_up = cam2.get_peak()
-	
+	# x_peak, y_peak = cam2.get_peak()
+	found_better_dir = False
+	i = 0
+	while found_better_dir == False:
+		# the move method is relative, can be switched to absolute if that is prefered tho
+		autofocus_stage.move(i * (ONE_TURN/4)) # move the stage a bit down
+		# x_peak_down, y_peak_down = cam2.get_peak()
+		focus_score_down = test_focus_score_array[0] # cam2.calc_focus()
 
+		autofocus_stage.move(-2 * i * (ONE_TURN/4)) # move the stage a bit up
+		# x_peak_up, y_peak_up = cam2.get_peak()
+		focus_score_up = test_focus_score_array[1] # cam2.calc_focus()
+		autofocus_stage.move(i * (ONE_TURN/4)) # move the stage back to the center
 
+		# compare the scores
+		if focus_score_up + focus_score_diff/10 <= focus_score_down: # want the difference in directions to be significant
+			direction = 1 # down
+			focus_score = focus_score_down
+			found_better_dir = True
+		elif focus_score_down + focus_score_diff/10 <= focus_score_up: # want the difference in directions to be significant
+			direction = -1 # up
+			focus_score = focus_score_up
+			found_better_dir = True
+
+	turns = i * (ONE_TURN/4)
+	autofocus_stage.move(direction * turns) # move the stage to where the best score was
+	return direction, focus_score
 
 ##### UI updates #####
 
@@ -1280,8 +1315,17 @@ def centerpoint():
 	updatepos(0)
 	lcent = 1
 
+# loop that checks for new input from the UI controller, and calls ctrlupdate
+def check_for_UI_controller_input():
+	while True:
+		currstr = read_data_controller()
+		if currstr and len(currstr) == 27:  # the string that the UI controller returns is v long lol
+			ctrlupdate(currstr)
 
+init_serial_connections()
+UI_controller_thread = threading.Thread(target=check_for_UI_controller_input)
 
+	
 
 
 

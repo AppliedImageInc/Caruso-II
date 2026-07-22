@@ -4,7 +4,7 @@
     <SchemaVersion>2.0</SchemaVersion>
     <ProjectGuid>5a672cfe-b349-489f-bee0-803e75196ded</ProjectGuid>
     <ProjectHome>.</ProjectHome>
-    <StartupFile>cam1.py</StartupFile>
+    <StartupFile>ui.py</StartupFile>
     <SearchPath>
     </SearchPath>
     <WorkingDirectory>.</WorkingDirectory>
@@ -26,8 +26,9 @@
     <Compile Include="cam1.py" />
     <Compile Include="cam2.py" />
     <Compile Include="carusoII.py" />
-    <Compile Include="carusoII_working.py" />
-    <Compile Include="scrap.py" />
+    <Compile Include="production code\cam1c.py" />
+    <Compile Include="production code\cam2c.py" />
+    <Compile Include="production code\carusoII_working.py" />
     <Compile Include="ui.py" />
   </ItemGroup>
   <ItemGroup>
@@ -44,6 +45,9 @@
       <PathEnvironmentVariable>PYTHONPATH</PathEnvironmentVariable>
       <Architecture>X64</Architecture>
     </Interpreter>
+  </ItemGroup>
+  <ItemGroup>
+    <Folder Include="production code\" />
   </ItemGroup>
   <Import Project="$(MSBuildExtensionsPath32)\Microsoft\VisualStudio\v$(VisualStudioVersion)\Python Tools\Microsoft.PythonTools.targets" />
   <!-- Uncomment the CoreCompile target to enable the Build command in
